@@ -1,5 +1,6 @@
 #include "config.h"
 #include "ImitateTTSService.h"
+#include "AudioStreaming.h"
 #include <iostream>
 
 ///TODO: Windows portability
@@ -75,8 +76,6 @@ void ImitateTTSService::speak(std::string words) {
     syslog(LOG_DEBUG, "speak() called");
     if(running.load()) {
 
-        history.push_back(words);
-
         //First check to see if these words are prepared already and speak them
         if(speakPreparedSpeech(words)) {
             return;
@@ -85,39 +84,22 @@ void ImitateTTSService::speak(std::string words) {
         syslog(LOG_DEBUG, "Speech has not been prepared yet, beginning synthesis");
 
         //If not prepared yet, synthesize them and speak them
-        while(currentlySpeaking.load()) {
-            //Wait until an opening occurs
-        }
-        currentlySpeaking.store(true);
+
         reconfigureLock.lock();
         syslog(LOG_DEBUG, "Locked reconfiguration lock");
 
-        speechStateChangedCallback(true);
-
         cst_wave * w = mimic_text_to_wave(words.c_str(), voice);
-/*        Mix_Chunk * sample = new Mix_Chunk();
-        sample->alen = (unsigned int) w->num_samples * sizeof(short); //Don't touch this, it just works....
+/*        sample->alen = (unsigned int) w->num_samples * sizeof(short); //Don't touch this, it just works....
         sample->abuf = (unsigned char *) w->samples;
         sample->volume = 128;
         sample->allocated = 0;
 
-        int channel = Mix_PlayChannel(-1, sample, false);
-        if(channel == -1) {
-            errorCallback("Failed to reserved mix channel through SDL2_mixer!");
-            return;
-        }
-        while(Mix_Playing(channel)) {
-            //Idle
-        }
-        Mix_FreeChunk(sample);
         delete_wave(w);
 */
 
         reconfigureLock.unlock();
+	audioQue.push(std::pair<std::string, cst_wave *>(words, w));
         syslog(LOG_DEBUG, "Unlocked reconfigure lock");
-        currentlySpeaking.store(false);
-
-        speechStateChangedCallback(false);
 
         return;
     }
