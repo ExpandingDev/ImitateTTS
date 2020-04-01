@@ -3,8 +3,8 @@ The Imitate TTS Service is a Linux daemon that provides a DBus interface for the
 
 ## Installation
 #### Dependencies
-Imitate TTS uses [dbus-cxx](https://github.com/dbus-cxx/dbus-cxx) to interface with DBus. Imitate also uses `SDL2` and `SDL2_mixer`to play audio. Imitate uses [mimic1](https://github.com/MycroftAI/mimic1) for the speech synthesis and voices. Imitate also used `glib2.0` for utility functions.
-You will have to install `dbus-cxx` and `mimic1` from source, but `glib2.0`, `SDL2.0` and `SDL2_mixer` should all be in your distro's package manager.
+Imitate TTS uses [dbus-cxx](https://github.com/dbus-cxx/dbus-cxx) to interface with DBus. Imitate also uses `gstreamer` and to play audio. Imitate uses [mimic1](https://github.com/MycroftAI/mimic1) for the speech synthesis and voices. Imitate also uses `glib2.0` for utility functions.
+You will have to install `dbus-cxx` and `mimic1` from source, but `glib2.0`, `gstreamer-1.0` and `gstreamer-audio-1.0` should all be in your distro's package manager.
 
 Imitate TTS Service uses CMake for its build system.   
 To install the `imitate-service` binary, configuration files, and header files, run the following commands:  
