@@ -32,6 +32,8 @@ GKeyFile * configFile;
 pid_t PID;
 ImitateTTSService * service;
 
+GMainLoop * eventLoop;
+
 void signalHandler(int);
 void daemonize();
 void registerSignalHandles();
@@ -60,7 +62,7 @@ void signalHandler(int signal) {
         //syslog(LOG_INFO,"Terminate Signal Received...");
         ///TODO: Make service stop
         service->running.store(false);
-        //exit(0);
+	g_main_loop_quit(eventLoop);
         break;
     default:
         //syslog(LOG_INFO, "Received unknown SIGNAL.");
@@ -181,9 +183,8 @@ void doLoop() {
     service->setPID(PID);
     service->signalStatus();
 
-    while(service->running.load()) {
-
-    }
+    g_main_loop_run(eventLoop);
+    g_main_loop_unref(eventLoop);
     delete service;
 }
 
@@ -262,54 +263,6 @@ int main(int argc, char *argv[]) {
         return 0;gst_init (&argc, &argv);
     }
 
-    /*
-    	///TODO: Test this.
-    	//Check to see if the IMITATE_RUNNING_DIRECTORY variable is set. If it is, use its value for the daemon's running directory
-    	gchar ** environmentVarList = g_get_environ();
-    	if(environmentVarList != NULL) {
-    		const gchar * runningDirectoryVariable = g_environ_getenv(environmentVarList, "IMITATE_RUNNING_DIRECTORY");
-    		if(runningDirectoryVariable != NULL) {
-    			memset(RUNNING_DIR, '\0', sizeof(char) * 200);
-    			strncpy(RUNNING_DIR, runningDirectoryVariable, 200);
-    		}
-    	}
-
-        //Check that the running directory is present
-        struct stat sb;
-        if (stat(RUNNING_DIR, &sb) == 0 && S_ISDIR(sb.st_mode)) {
-            //Do nothing b/c it exists
-        } else {
-            std::cerr << "Running directory " << RUNNING_DIR << " not found! Exiting!" << std::endl;
-            return -1;
-        }
-
-    	int res = chdir(RUNNING_DIR); // change running directory
-    	if(res < 0) {
-    		std::cerr << "Failed to change to running directory: " << RUNNING_DIR << std::endl;
-    		switch(errno){
-    			case EACCES:
-    				std::cerr << "Permission denied to change to the running directory." << std::endl;
-    				break;
-    			case ELOOP:
-    			gst_init (&argc, &argv);	std::cerr << "A symbolic link loop exists when resolving the target directory" << std::endl;
-    				break;
-    			case ENOTDIR:
-    				std::cerr << "The target directory is not a directory." << std::endl;
-    				break;
-    			case ENOENT:
-    				std::cerr << "No such directory" << std::endl;
-    				break;
-    			case ENAMETOOLONG:
-    				std::cerr << "Target directory path is too long" << std::endl;
-    				break;
-    			default:
-    				std::cerr << "Unknown error case!" << std::endl;
-    				break;
-    		}
-    		return res;
-    	}
-        */
-
     registerSignalHandles();
 
     int lfp = open(LOCK_FILE, O_RDWR | O_CREAT, 0640);
@@ -322,6 +275,7 @@ int main(int argc, char *argv[]) {
     }
 
     gst_init (&argc, &argv);
+    eventLoop = g_main_loop_new(NULL, FALSE);
 
     if(lockf(lfp, F_TEST, 0) < 0) { //Test to see if this is the only instance running
         //There is another process running already
@@ -329,7 +283,7 @@ int main(int argc, char *argv[]) {
             std::cerr << "There is another process running already that has locked the lockfile! Unable to start the daemon! Exiting..." << std::endl;
             exit(-1);
         }
-gst_init (&argc, &argv);        else {
+        else {
             openlog("imitate", LOG_NDELAY | LOG_PID | LOG_CONS, LOG_USER);
 #ifdef ENABLE_DEBUG
             std::cout << "Debug logging has been enabled" << std::endl;
