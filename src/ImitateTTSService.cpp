@@ -205,17 +205,7 @@ std::vector<std::string> ImitateTTSService::getSpeechHistory(uint16_t index, uin
     return selected;
 }
 
-ImitateTTSService::ImitateTTSService(GKeyFile * config) : running(true), currentlySpeaking(false), history(0), Buckey::TTSService(IMITATE_VERSION, "imitate") {
-    reconfigureLock.lock();
-
-    configFile = config;
-    syslog(LOG_DEBUG,"Constructor");
-
-    errorCallback = emptyStringCallback;
-    voiceSwitchedCallback = emptyStringCallback;
-    speechStateChangedCallback = emptyBoolCallback;
-    speechPreparedCallback = emptyStringCallback;
-
+void ImitateTTSService::loadPreparedAudioList() {
     lastAudioIndex = 0;
 
     preparedAudioListFilePath = "prepared";
@@ -260,6 +250,20 @@ ImitateTTSService::ImitateTTSService(GKeyFile * config) : running(true), current
         std::cerr << "WARNING: The prepared.txt failed to open, maybe it is missing?" << std::endl;
     }
     lastAudioIndex = lineNumber;
+}
+
+ImitateTTSService::ImitateTTSService(GKeyFile * config) : running(true), currentlySpeaking(false), history(0), Buckey::TTSService(IMITATE_VERSION, "imitate") {
+    reconfigureLock.lock();
+
+    configFile = config;
+    syslog(LOG_DEBUG,"Constructor");
+
+    errorCallback = emptyStringCallback;
+    voiceSwitchedCallback = emptyStringCallback;
+    speechStateChangedCallback = emptyBoolCallback;
+    speechPreparedCallback = emptyStringCallback;
+
+    loadPreparedAudioList();
 
     GError * error = NULL;
 
