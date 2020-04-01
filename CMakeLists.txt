@@ -5,7 +5,7 @@ project(Imitate VERSION 0.1)
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
-add_executable(imitate main.cpp src/ImitateTTSService.cpp src/cmu/mimic_voice_list.c)
+add_executable(imitate src/main.cpp src/ImitateTTSService.cpp src/cmu/mimic_voice_list.c)
 
 target_include_directories(imitate PUBLIC "${PROJECT_BINARY_DIR}"
 						  "${PROJECT_BINARY_DIR}/include")
