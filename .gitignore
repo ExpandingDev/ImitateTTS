@@ -1,0 +1,11 @@
+config.h
+Makefile
+.cmake
+.lock
+*.orig
+CMakeCache.txt
+imitate
+*.cbp
+*.depend
+*.layout
+CMakeFiles/

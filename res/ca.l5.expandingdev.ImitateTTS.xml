@@ -1,0 +1,54 @@
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN" "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<node name="/ca/l5/expandingdev/ImitateTTS" cppname="ImitateTTSService" dest="ca.l5.expandingdev" path="/ca/l5/expandingdev/ImitateTTS" >
+	<!-- <interface name="org.freedesktop.DBus.Introspectable">
+		<method name="Instrospect" >
+    		<arg name="xml-data" type="s" direction="out" />
+		</method>
+	</interface>
+
+	<interface name="org.freedesktop.DBus.ObjectManager" >
+		<method name="GetManagedObjects" >
+			<arg name="objpath_interfaces_and_properties" direction="out" type="a{oa{sa{sv}}}" />
+		</method>
+	</interface>-->
+
+	<interface name="ca.l5.expandingdev.Buckey.TTS" >
+		<method name="speak" >
+			<arg name="words" type="s" direction="in" />
+		</method>
+
+		<method name="prepareSpeech" >
+			<arg name="words" type="s" direction="in" />
+		</method>
+
+		<method name="selectVoice" >
+			<arg name="voiceFile" type="s" direction="in" />
+		</method>
+
+		<method name="getSpeechHistory" >
+			<doc:doc><doc:summary>
+				Returns an array of strings representing the last @range phrases spoken from @index phrases back.
+				element at @index in included
+				element at @index + @range is excluded
+				Ex: History: "hi", "hello world", "confirmed", "no"
+					getSpeechHistory(index=1, range=2) -> ["hello world", "confirmed"]
+			</doc:summary></doc:doc>
+			<arg name="index" type="q" direction="in" />
+			<arg name="range" type="y" direction="in" />
+			<arg name="history" type="as" direction="out" />
+		</method>
+
+		<method name="getState" >
+			<arg name="isSpeaking" type="b" direction="out" />
+			<arg name="voiceFile" type="s" direction="out" />
+			<arg name="serviceImplementation" type="s" direction="out" />
+		</method>
+
+		<signal name="SpeechPrepared" >
+			<arg name="words" type="s" direction="out" />
+		</signal>
+
+		<signal name="StoppedSpeaking" ></signal>
+		<signal name="StartedSpeaking" ></signal>
+	</interface>
+</node>

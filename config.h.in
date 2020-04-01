@@ -1,0 +1,13 @@
+#ifndef H_IMITATE_CONFIG
+#define H_IMITATE_CONFIG
+
+#define IMITATE_VERSION "@Imitate_VERSION@"
+#define DEFAULT_VOICE_NAME "ap"
+#define DEFAULT_RUNNING_DIRECTORY "/etc/imitate"
+#define DEFAULT_CONFIG_PATH "/etc/imitate/imitate.conf"
+
+#if @ENABLE_DEBUG@ == 1
+#define DEBUG 1
+#endif
+
+#endif
