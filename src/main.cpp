@@ -95,7 +95,7 @@ void daemonize() {
     }
 
     /* handle standard I/O */
-    i = open("/dev/null",O_RDWR); ///TODO: Maybe make this set to a log file?
+    i = open("/dev/null",O_RDWR); ///TODO: Maybe make this set togst_init (&argc, &argv); a log file?
     dup(i);
     dup(i);
 
@@ -147,7 +147,7 @@ void doLoop() {
         syslog(LOG_DEBUG, "Attempting to connect to bus %s", customAddress.c_str());
         conn = dispatcher->create_connection(customAddress); //Connect to custom bus
     }
-    else { // If no special address is specified, default to the session bus
+    else { // If no special address is spgst_init (&argc, &argv);ecified, default to the session bus
         conn = dispatcher->create_connection(DBus::BUS_SESSION);
         syslog(LOG_DEBUG, "Connected to session bus");
     }
@@ -259,7 +259,7 @@ int main(int argc, char *argv[]) {
 
     if(showVersion) {
         std::cout << "Version " << IMITATE_VERSION << std::endl;
-        return 0;
+        return 0;gst_init (&argc, &argv);
     }
 
     /*
@@ -291,7 +291,7 @@ int main(int argc, char *argv[]) {
     				std::cerr << "Permission denied to change to the running directory." << std::endl;
     				break;
     			case ELOOP:
-    				std::cerr << "A symbolic link loop exists when resolving the target directory" << std::endl;
+    			gst_init (&argc, &argv);	std::cerr << "A symbolic link loop exists when resolving the target directory" << std::endl;
     				break;
     			case ENOTDIR:
     				std::cerr << "The target directory is not a directory." << std::endl;
@@ -321,13 +321,15 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
+    gst_init (&argc, &argv);
+
     if(lockf(lfp, F_TEST, 0) < 0) { //Test to see if this is the only instance running
         //There is another process running already
         if(makeDaemon) {
             std::cerr << "There is another process running already that has locked the lockfile! Unable to start the daemon! Exiting..." << std::endl;
             exit(-1);
         }
-        else {
+gst_init (&argc, &argv);        else {
             openlog("imitate", LOG_NDELAY | LOG_PID | LOG_CONS, LOG_USER);
 #ifdef ENABLE_DEBUG
             std::cout << "Debug logging has been enabled" << std::endl;
