@@ -3,7 +3,7 @@
 #include "cst_wave.h"
 
 
-std::queue<std::pair<std::string, cst_wave *>> audioQue;
+//std::queue<std::pair<std::string, cst_wave *>> audioQue;
 
 /* TODO:
 - history should have words added to it once the audio is fully passed through gstreamer

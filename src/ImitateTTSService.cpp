@@ -1,6 +1,5 @@
 #include "config.h"
 #include "ImitateTTSService.h"
-#include "AudioStreaming.h"
 #include <iostream>
 
 ///TODO: Windows portability
@@ -309,11 +308,16 @@ ImitateTTSService::~ImitateTTSService()
 {
     syslog(LOG_DEBUG, "Destructor start");
 
-    //Don't free this because this should be passed to us, so let whoever passed it to use to free it.
-    //g_key_file_free(configFile);
+    //Free all synthesized audio snippets
+    if(!audioQue.empty()) {
+	syslog(LOG_DEBUG, "Freeing stored waves");
+	while(!audioQue.empty()) {
+		delete_wave(audioQue.front().second);
+		audioQue.pop();
+	}
+    }
+
 
     mimic_exit();
-//    Mix_Quit();
-//    SDL_CloseAudio();
     syslog(LOG_DEBUG, "Destructor finished");
 }

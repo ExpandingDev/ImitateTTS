@@ -16,6 +16,9 @@
 #include "cst_audio.h"
 #include <glib.h>
 #include <dbus-cxx.h>
+#include <gst/gst.h>
+#include <gst/audio/audio.h>
+
 
 class ImitateTTSService : public Buckey::TTSService
 {
@@ -36,6 +39,8 @@ public:
 
     ///TODO: Add listener for shutdown call
     std::atomic<bool> running;
+
+    std::que<std::pair<std::string, cst_wave *>> audioQue;
 
     virtual ~ImitateTTSService();
 
