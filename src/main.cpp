@@ -61,8 +61,8 @@ void signalHandler(int signal) {
     case SIGTERM:
         //syslog(LOG_INFO,"Terminate Signal Received...");
         ///TODO: Make service stop
-        service->running.store(false);
-	g_main_loop_quit(eventLoop);
+	g_main_loop_quit(service->eventLoop);
+	delete service;
         break;
     default:
         //syslog(LOG_INFO, "Received unknown SIGNAL.");
@@ -181,11 +181,8 @@ void doLoop() {
     }
 
     service->setPID(PID);
+    service->startLoop();
     service->signalStatus();
-
-    g_main_loop_run(eventLoop);
-    g_main_loop_unref(eventLoop);
-    delete service;
 }
 
 void readConfiguration() {

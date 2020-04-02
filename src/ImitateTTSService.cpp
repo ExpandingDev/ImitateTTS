@@ -19,6 +19,7 @@
 #define PATH_SEPARATOR "/"
 #endif
 
+//This ensures that we have access to all of the configured mimic1 voices
 extern "C" {
     cst_val *mimic_set_voice_list(const char *voxdir);
 }
@@ -73,7 +74,7 @@ bool ImitateTTSService::speakPreparedSpeech(std::string words) {
 
 void ImitateTTSService::speak(std::string words) {
     syslog(LOG_DEBUG, "speak() called");
-    if(running.load()) {
+    if(g_main_loop_is_running(eventLoop)) {
 
         //First check to see if these words are prepared already and speak them
         if(speakPreparedSpeech(words)) {
@@ -86,20 +87,22 @@ void ImitateTTSService::speak(std::string words) {
 
         reconfigureLock.lock();
         syslog(LOG_DEBUG, "Locked reconfiguration lock");
-
         cst_wave * w = mimic_text_to_wave(words.c_str(), voice);
-/*        sample->alen = (unsigned int) w->num_samples * sizeof(short); //Don't touch this, it just works....
-        sample->abuf = (unsigned char *) w->samples;
-        sample->volume = 128;
-        sample->allocated = 0;
-
-        delete_wave(w);
-*/
-
         reconfigureLock.unlock();
-	audioQue.push(std::pair<std::string, cst_wave *>(words, w));
         syslog(LOG_DEBUG, "Unlocked reconfigure lock");
 
+        queueLock.lock();
+	audioQueue.push(std::pair<std::string, cst_wave *>(words, w));
+        queueLock.unlock();
+
+/*        audioInfo.imitate->sourceidLock.lock();
+        if(audioInfo.sourceid == 0) {
+            syslog(LOG_DEBUG, "sourceid was 0");
+            audioInfo.sourceid = g_idle_add((GSourceFunc) ImitateTTSService::pushAudioCallback, &audioInfo);
+//    gst_element_set_state(audioInfo.pipeline, GST_STATE_PLAYING);
+        }
+        audioInfo.imitate->sourceidLock.unlock();
+*/
         return;
     }
     return;
@@ -135,7 +138,7 @@ void ImitateTTSService::prepareSpeech(std::string words) {
     preparedAudioListFile.write(words.c_str(), words.length());
     preparedAudioListFile.flush();
 
-    delete w;
+    delete_wave(w);
 
     //Trigger speech prepared signal/callback
     speechPreparedCallback(words);
@@ -233,8 +236,133 @@ void ImitateTTSService::loadPreparedAudioList() {
     lastAudioIndex = lineNumber;
 }
 
-ImitateTTSService::ImitateTTSService(GKeyFile * config) : running(true), currentlySpeaking(false), history(0), Buckey::TTSService(IMITATE_VERSION, "imitate") {
+void ImitateTTSService::pauseSpeech() {
+    userPaused = true;
+    gst_element_set_state(audioInfo.pipeline, GST_STATE_PAUSED);
+}
+
+void ImitateTTSService::resumeSpeech() {
+    userPaused = false;
+    gst_element_set_state(audioInfo.pipeline, GST_STATE_PLAYING);
+}
+
+void ImitateTTSService::bufferDestroyCallback(void * v) {
+        if(v != nullptr) {
+                syslog(LOG_DEBUG, "destroying wave");
+                cst_wave * w = (cst_wave *) v;
+                delete_wave(w);
+        }
+}
+
+void ImitateTTSService::startAudioFeedCallback(GstElement * source, guint size, PipelineInfo * audioInfo) {
+    syslog(LOG_DEBUG, "startAudioFeedCallback");
+    if(audioInfo->sourceid == 0) {
+        audioInfo->sourceid = g_idle_add((GSourceFunc) ImitateTTSService::pushAudioCallback, audioInfo);
+    }
+    audioInfo->imitate->feedingLock.lock();
+    audioInfo->imitate->feeding = true;
+    audioInfo->imitate->feedingLock.unlock();
+}
+
+void ImitateTTSService::stopAudioFeedCallback(GstElement * source, guint size, PipelineInfo * audioInfo) {
+    syslog(LOG_DEBUG, "stopAudioFeedCallback");
+/*    if(audioInfo->sourceid != 0) {
+        g_source_remove(audioInfo->sourceid);
+        audioInfo->sourceid = 0;
+    }*/
+    audioInfo->imitate->feedingLock.lock();
+    audioInfo->imitate->feeding = false;
+    audioInfo->imitate->feedingLock.unlock();
+}
+
+/// Called during idle time in the GMainLoop to push an audio sample to gstreamer to play
+gboolean ImitateTTSService::pushAudioCallback(PipelineInfo * audioInfo) {
+//    syslog(LOG_DEBUG, "pushAudio called");
+    ImitateTTSService * that = audioInfo->imitate;
+    that->queueLock.lock();
+    that->feedingLock.lock();
+    if(!that->audioQueue.empty() && that->feeding) {
+//	syslog(LOG_DEBUG, "audioQueue not empty");
+        that->feedingLock.unlock();
+        GstBuffer * buffer;
+        guint num_feeding_samples;
+        num_feeding_samples = CHUNK_SIZE / 2;
+
+        cst_wave * w = that->audioQueue.front().second;
+        that->queueLock.unlock();
+
+        // Check to see if we've passed all of the wave file to gstreamer, so add the words to the speech history and pop the queue
+        bool reachedEnd = audioInfo->waveSampleCount + num_feeding_samples > w->num_samples;
+        unsigned int remaining = 0;
+        if(reachedEnd) {
+                syslog(LOG_DEBUG, "reached end of wave");
+                that->history.push_back(audioInfo->imitate->audioQueue.front().first);
+                that->queueLock.lock();
+                that->audioQueue.pop();
+                that->queueLock.unlock();
+                remaining = (w->num_samples - audioInfo->waveSampleCount) * 2;
+                num_feeding_samples = remaining / 2;
+        }
+
+        // Make a new buffer that wrapps the audio data to be played. gstreamer shouldn't modify the data, set user_data to a pointer of the wave if we have reached the end of the wave object so that the callback function knows to destroy it
+        buffer = gst_buffer_new_wrapped_full(GST_MEMORY_FLAG_READONLY, (unsigned char *) w->samples, (gsize) w->num_samples * 2, audioInfo->waveSampleCount * 2, reachedEnd ? remaining : CHUNK_SIZE, reachedEnd ? w : nullptr, &ImitateTTSService::bufferDestroyCallback);
+//        GST_BUFFER_TIMESTAMP (buffer) = gst_util_uint64_scale (audioInfo->streamSampleCount, GST_SECOND, SAMPLE_RATE);
+        GST_BUFFER_DURATION (buffer) = gst_util_uint64_scale(num_feeding_samples, GST_SECOND, SAMPLE_RATE);
+        audioInfo->streamSampleCount += num_feeding_samples;
+        audioInfo->waveSampleCount += num_feeding_samples;
+
+        if(reachedEnd) {
+            audioInfo->waveSampleCount = 0;
+        }
+
+        // Push the buffer to gstreamer and check for any errors
+        GstFlowReturn ret;
+        g_signal_emit_by_name(audioInfo->appsrc, "push-buffer", buffer, &ret);
+
+        gst_buffer_unref(buffer);
+
+        if(ret != GST_FLOW_OK) {
+                syslog(LOG_ERR, "Got error while pushing buffer to gstreamer! Removing pushAudioCallback from the GMainLoop!");
+                return FALSE;
+        }
+
+        return TRUE;
+    }
+/*    else {
+        that->queueLock.unlock();
+        syslog(LOG_INFO, "audioQue is empty, removing the pushAudio callback from the main loop");
+        that->sourceidLock.lock();
+        audioInfo->sourceid = 0;
+        that->sourceidLock.unlock();
+        return FALSE; // Returning FALSE will cause the main loop to automatically remove this callback
+    } */
+    that->feedingLock.unlock();
+    that->queueLock.unlock();
+    return TRUE;
+}
+
+void ImitateTTSService::audioSourceSetupCallback(GstElement * pipeline, GstElement * source, PipelineInfo * audioInfo) {
+    syslog(LOG_DEBUG, "Received setup-source callback from gstreamer");
+    audioInfo->appsrc = source;
+
+    GstAudioInfo info;
+    GstCaps * audio_caps;
+    gst_audio_info_set_format(&info, GST_AUDIO_FORMAT_S16, SAMPLE_RATE, 1, NULL);
+
+    audio_caps = gst_audio_info_to_caps (&info);
+    g_object_set (source, "caps", audio_caps, "format", GST_FORMAT_TIME, NULL);
+    g_object_set(G_OBJECT(source), "do-timestamp", TRUE, NULL);
+    g_signal_connect(source, "need-data", G_CALLBACK(&startAudioFeedCallback), audioInfo);
+    g_signal_connect(source, "enough-data", G_CALLBACK(&stopAudioFeedCallback), audioInfo);
+
+    gst_caps_unref(audio_caps);
+
+    syslog(LOG_DEBUG, "Done setting up source for gstreamer");
+}
+
+ImitateTTSService::ImitateTTSService(GKeyFile * config) : audioQueue(), userPaused(false), currentlySpeaking(false), history(0), Buckey::TTSService(IMITATE_VERSION, "imitate") {
     reconfigureLock.lock();
+    feeding = false;
 
     configFile = config;
     syslog(LOG_DEBUG,"Constructor");
@@ -256,6 +384,7 @@ ImitateTTSService::ImitateTTSService(GKeyFile * config) : running(true), current
         strcpy(voiceName, defaultVoiceValue);
     }
 
+    syslog(LOG_DEBUG, "Initializing mimic1");
     mimic_init();
     ///TODO: Maybe not be limited to english? That's usually a good thing
     mimic_add_lang("eng", usenglish_init, cmu_lex_init);
@@ -268,40 +397,31 @@ ImitateTTSService::ImitateTTSService(GKeyFile * config) : running(true), current
         std::cerr << "Failed to load voice: " << voiceName << "! Exiting..." << std::endl;
 
         setState(Buckey::Service::State::ERROR);
-        signalError("Filed to load Mimic TTS voice file.");
+        signalError("Failed to load Mimic TTS voice file.");
 
-        running.store(false);
         exit(-1);
     }
-/*
-    // start SDL with audio support
-    if(SDL_Init(SDL_INIT_AUDIO)==-1) {
-        printf("SDL_Init: %s\n", SDL_GetError());
-        syslog(LOG_ERR, "Error initializing SDL_mixer");
-        std::cerr << "Error initializing SDL_mixer" << std::endl;
-        exit(1);
-    }
 
-    // open 44.1KHz, signed 16bit, system byte order,
-    //      mono audio, using 1024 byte chunks
-    if(Mix_OpenAudio(44100, AUDIO_S16SYS, 1, 1024)==-1) {
-        printf("Mix_OpenAudio: %s\n", Mix_GetError());
-        syslog(LOG_ERR, "Error initializing SDL_mixer: %s", Mix_GetError());
-        std::cerr << "Error opening SDL_mixer audio" << std::endl;
-        exit(2);
-    }
-
-    Mix_Init(MIX_INIT_FLAC | MIX_INIT_MP3 | MIX_INIT_OGG);
-
-    syslog(LOG_DEBUG, "Initialized SDL mixer");
-    std::cout << "Initialized SDL mixer" << std::endl;
-*/
-
+    // Start up the gstreamer pipeline
+    syslog(LOG_DEBUG, "Setting up gstreamer pipeline");
+    audioInfo.imitate = this;
+    audioInfo.waveSampleCount = 0;
+    audioInfo.streamSampleCount = 0;
+    audioInfo.sourceid = 0;
     reconfigureLock.unlock();
-    std::cout << "Imitate TTS successfully initialized." << std::endl;
 
+    std::cout << "Imitate TTS successfully initialized." << std::endl;
+}
+
+void ImitateTTSService::startLoop() {
+    syslog(LOG_DEBUG, "startLoop called");
+    eventLoop = g_main_loop_new(NULL, FALSE);
+    audioInfo.pipeline = gst_parse_launch("playbin uri=appsrc://", NULL);
+    g_signal_connect(audioInfo.pipeline, "source-setup", G_CALLBACK (ImitateTTSService::audioSourceSetupCallback), &audioInfo);
+    gst_element_set_state(audioInfo.pipeline, GST_STATE_PLAYING);
     setState(Buckey::Service::State::RUNNING);
     setStatusMessage("Imitate TTS successfully initialized.");
+    g_main_loop_run(eventLoop);
 }
 
 ImitateTTSService::~ImitateTTSService()
@@ -309,14 +429,21 @@ ImitateTTSService::~ImitateTTSService()
     syslog(LOG_DEBUG, "Destructor start");
 
     //Free all synthesized audio snippets
-    if(!audioQue.empty()) {
+    queueLock.lock();
+    if(!audioQueue.empty()) {
 	syslog(LOG_DEBUG, "Freeing stored waves");
-	while(!audioQue.empty()) {
-		delete_wave(audioQue.front().second);
-		audioQue.pop();
+	while(!audioQueue.empty()) {
+		delete_wave(audioQueue.front().second);
+		audioQueue.pop();
 	}
     }
+    queueLock.unlock();
 
+
+    //Free all gstreamer elements
+    gst_element_set_state(audioInfo.pipeline, GST_STATE_NULL);
+    gst_object_unref(audioInfo.appsrc);
+    gst_object_unref(audioInfo.pipeline);
 
     mimic_exit();
     syslog(LOG_DEBUG, "Destructor finished");
