@@ -33,7 +33,7 @@ typedef struct sPipelineInfo {
     /// Stores the number of samples played over the entirety of the audio stream
     guint64 streamSampleCount;
     /// Used to add/remove the pushAudioCallback onto the GMainLoop, see startAudioFeedCallback and stopAudioFeedCallback
-    std::atomic<guint> sourceid;
+    guint sourceid;
     /// Pointer to the ImitateTTSService that this info belongs to. Used so that members within ImitateTTSService don't have to be made static.
     ImitateTTSService * imitate;
 } PipelineInfo;
@@ -68,11 +68,13 @@ public:
 
     static void audioSourceSetupCallback(GstElement * pipeline, GstElement * source, PipelineInfo * audioInfo);
     static void startAudioFeedCallback(GstElement * source, guint size, PipelineInfo * audioInfo);
-    static void stopAudioFeedCallback(GstElement * source, guint size, PipelineInfo * audioInfo);
+    static void stopAudioFeedCallback(GstElement * source, PipelineInfo * audioInfo);
     static void bufferDestroyCallback(void * d);
     static gboolean pushAudioCallback(PipelineInfo * audioInfo);
 
     virtual ~ImitateTTSService();
+
+    PipelineInfo audioInfo;
 
 protected:
     void loadPreparedAudioList();
@@ -81,8 +83,6 @@ protected:
     const char * CONFIG_FILENAME = "imitate.conf";
 
     cst_voice * voice;
-
-    PipelineInfo audioInfo;
 
     std::vector<std::pair<std::string, std::string>> preparedAudio;
     std::mutex reconfigureLock;

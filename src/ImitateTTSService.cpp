@@ -95,23 +95,14 @@ void ImitateTTSService::speak(std::string words) {
 	audioQueue.push(std::pair<std::string, cst_wave *>(words, w));
         queueLock.unlock();
 
-/*        audioInfo.imitate->sourceidLock.lock();
-        if(audioInfo.sourceid == 0) {
-            syslog(LOG_DEBUG, "sourceid was 0");
-            audioInfo.sourceid = g_idle_add((GSourceFunc) ImitateTTSService::pushAudioCallback, &audioInfo);
-//    gst_element_set_state(audioInfo.pipeline, GST_STATE_PLAYING);
-        }
-        audioInfo.imitate->sourceidLock.unlock();
-*/
         return;
     }
     return;
 }
 
 /**
-  * This function is a synchronous function that prepares the words and triggers the onSpeechPrepared event when done.
+  * This function is a blocking function that prepares the words and triggers the onSpeechPrepared event when done.
   */
-
 void ImitateTTSService::prepareSpeech(std::string words) {
     syslog(LOG_DEBUG, "prepareSpeech() has been called");
     std::transform(words.begin(), words.end(), words.begin(), ::tolower);
@@ -259,30 +250,22 @@ void ImitateTTSService::startAudioFeedCallback(GstElement * source, guint size, 
     if(audioInfo->sourceid == 0) {
         audioInfo->sourceid = g_idle_add((GSourceFunc) ImitateTTSService::pushAudioCallback, audioInfo);
     }
-    audioInfo->imitate->feedingLock.lock();
-    audioInfo->imitate->feeding = true;
-    audioInfo->imitate->feedingLock.unlock();
 }
 
-void ImitateTTSService::stopAudioFeedCallback(GstElement * source, guint size, PipelineInfo * audioInfo) {
+void ImitateTTSService::stopAudioFeedCallback(GstElement * source, PipelineInfo * audioInfo) {
     syslog(LOG_DEBUG, "stopAudioFeedCallback");
-/*    if(audioInfo->sourceid != 0) {
-        g_source_remove(audioInfo->sourceid);
-        audioInfo->sourceid = 0;
-    }*/
-    audioInfo->imitate->feedingLock.lock();
-    audioInfo->imitate->feeding = false;
-    audioInfo->imitate->feedingLock.unlock();
+    if(audioInfo->sourceid != 0) {
+       g_source_remove(audioInfo->sourceid);
+       audioInfo->sourceid = 0;
+    }
 }
 
 /// Called during idle time in the GMainLoop to push an audio sample to gstreamer to play
 gboolean ImitateTTSService::pushAudioCallback(PipelineInfo * audioInfo) {
-//    syslog(LOG_DEBUG, "pushAudio called");
     ImitateTTSService * that = audioInfo->imitate;
     that->queueLock.lock();
     that->feedingLock.lock();
     if(!that->audioQueue.empty() && that->feeding) {
-//	syslog(LOG_DEBUG, "audioQueue not empty");
         that->feedingLock.unlock();
         GstBuffer * buffer;
         guint num_feeding_samples;
@@ -306,7 +289,6 @@ gboolean ImitateTTSService::pushAudioCallback(PipelineInfo * audioInfo) {
 
         // Make a new buffer that wrapps the audio data to be played. gstreamer shouldn't modify the data, set user_data to a pointer of the wave if we have reached the end of the wave object so that the callback function knows to destroy it
         buffer = gst_buffer_new_wrapped_full(GST_MEMORY_FLAG_READONLY, (unsigned char *) w->samples, (gsize) w->num_samples * 2, audioInfo->waveSampleCount * 2, reachedEnd ? remaining : CHUNK_SIZE, reachedEnd ? w : nullptr, &ImitateTTSService::bufferDestroyCallback);
-//        GST_BUFFER_TIMESTAMP (buffer) = gst_util_uint64_scale (audioInfo->streamSampleCount, GST_SECOND, SAMPLE_RATE);
         GST_BUFFER_DURATION (buffer) = gst_util_uint64_scale(num_feeding_samples, GST_SECOND, SAMPLE_RATE);
         audioInfo->streamSampleCount += num_feeding_samples;
         audioInfo->waveSampleCount += num_feeding_samples;
@@ -328,14 +310,6 @@ gboolean ImitateTTSService::pushAudioCallback(PipelineInfo * audioInfo) {
 
         return TRUE;
     }
-/*    else {
-        that->queueLock.unlock();
-        syslog(LOG_INFO, "audioQue is empty, removing the pushAudio callback from the main loop");
-        that->sourceidLock.lock();
-        audioInfo->sourceid = 0;
-        that->sourceidLock.unlock();
-        return FALSE; // Returning FALSE will cause the main loop to automatically remove this callback
-    } */
     that->feedingLock.unlock();
     that->queueLock.unlock();
     return TRUE;
@@ -352,8 +326,8 @@ void ImitateTTSService::audioSourceSetupCallback(GstElement * pipeline, GstEleme
     audio_caps = gst_audio_info_to_caps (&info);
     g_object_set (source, "caps", audio_caps, "format", GST_FORMAT_TIME, NULL);
     g_object_set(G_OBJECT(source), "do-timestamp", TRUE, NULL);
-    g_signal_connect(source, "need-data", G_CALLBACK(&startAudioFeedCallback), audioInfo);
     g_signal_connect(source, "enough-data", G_CALLBACK(&stopAudioFeedCallback), audioInfo);
+    g_signal_connect(source, "need-data", G_CALLBACK(&startAudioFeedCallback), audioInfo);
 
     gst_caps_unref(audio_caps);
 
@@ -438,7 +412,6 @@ ImitateTTSService::~ImitateTTSService()
 	}
     }
     queueLock.unlock();
-
 
     //Free all gstreamer elements
     gst_element_set_state(audioInfo.pipeline, GST_STATE_NULL);
