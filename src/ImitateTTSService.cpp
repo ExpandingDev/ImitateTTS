@@ -264,9 +264,7 @@ void ImitateTTSService::stopAudioFeedCallback(GstElement * source, PipelineInfo 
 gboolean ImitateTTSService::pushAudioCallback(PipelineInfo * audioInfo) {
     ImitateTTSService * that = audioInfo->imitate;
     that->queueLock.lock();
-    that->feedingLock.lock();
-    if(!that->audioQueue.empty() && that->feeding) {
-        that->feedingLock.unlock();
+    if(!that->audioQueue.empty()) {
         GstBuffer * buffer;
         guint num_feeding_samples;
         num_feeding_samples = CHUNK_SIZE / 2;
@@ -310,7 +308,6 @@ gboolean ImitateTTSService::pushAudioCallback(PipelineInfo * audioInfo) {
 
         return TRUE;
     }
-    that->feedingLock.unlock();
     that->queueLock.unlock();
     return TRUE;
 }
@@ -336,7 +333,6 @@ void ImitateTTSService::audioSourceSetupCallback(GstElement * pipeline, GstEleme
 
 ImitateTTSService::ImitateTTSService(GKeyFile * config) : audioQueue(), userPaused(false), currentlySpeaking(false), history(0), Buckey::TTSService(IMITATE_VERSION, "imitate") {
     reconfigureLock.lock();
-    feeding = false;
 
     configFile = config;
     syslog(LOG_DEBUG,"Constructor");
